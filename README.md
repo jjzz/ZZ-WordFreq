@@ -32,6 +32,8 @@ ZZ's BNC+ANC Top-100000 Word List (En)
 ## screenshot
 ![screenshot](https://raw.githubusercontent.com/jjzz/BNC-ANC-word-freqency-list-dsl/master/goldendict_screen.png)
 
+> [ANC]6776 means No.6776 in ANC ranking (在ANC词频中列第6776位)
+
 ## current version
 > ver 0.1
 
