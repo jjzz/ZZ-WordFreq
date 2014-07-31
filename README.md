@@ -3,8 +3,6 @@ BNC-ANC-word-freqency-list-dsl
 
 BNC &amp; ANC's word frequency, dsl format, could be used in [GoldenDict] v1.5
 
-File list:
-
 ZZ's BNC Top-15000 Word List (En)
 > word & frequency only
 - bnc15000.ann
@@ -30,6 +28,9 @@ ZZ's BNC+ANC Top-100000 Word List (En)
 - OANC (Open American Naitonal Corpus)
 
 > http://www.americannationalcorpus.org/SecondRelease/frequency2.html
+
+## screenshot
+![screenshot](https://raw.githubusercontent.com/jjzz/BNC-ANC-word-freqency-list-dsl/master/goldendict_screen.png)
 
 ## current version
 > ver 0.1
