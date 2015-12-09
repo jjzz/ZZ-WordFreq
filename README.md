@@ -10,7 +10,7 @@ ZZ WordFreq
 
 - 基于网络收集来的词频信息, 进行进一步整理, 选择BNC/ANC/COCA各100k以内的单词, 合并为一单独的dsl词典
 
-- 可用于 [GoldenDict] v1.5
+- 可用于 [GoldenDict] [Goldendict@github] v1.5
 
 ZZ WordFreq
 > top 100k from BNC/ANC/COCA
@@ -60,4 +60,4 @@ ZZ's BNC Top-15000 Word List (En-Cn)
 - 仅OANC中将名词单复数 和 动词原型/过去式/过去分词 合并作为同一个单词处理
 
 [goldendict]:http://www.goldendict.org
-
+[goldendict@github]:https://github.com/goldendict/goldendict
