@@ -1,0 +1,17 @@
+﻿"ZZ WordFreq"
+BNC+ANC+COCA Top-100k WordsFreq (En)
+
+移除了所有含有某些标点符号/任意阿拉伯数字/任意非ASCII字符的单词
+BNC/ANC/COCA三个词频表中各取前10万单词, 综合成此词频表
+
+Reference
+  BNC:  http://www.kilgarriff.co.uk/BNClists/all.num.gz
+  ANC:  http://www.anc.org/SecondRelease/data/ANC-all-count.txt
+  COCA: http://www.pdawiki.com/forum/thread-13667-1-1.html
+
+Source Code (python)
+  https://github.com/jjzz/ZZ-WordFreq
+
+Version History
+  0.2   2015-12-10 BNC+ANC+COCA
+  0.1   2014-07-30 BNC+ANC
