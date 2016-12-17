@@ -5,54 +5,47 @@ import sys
 import re
 import collections
 
-class ZZWordFreq:
-
-
-    def __init__(self, N=100000):
-        # default: top 100k words
-        self.N = N
-
-        self.OUTPUTDSL = "wordfreq.zz.dsl"
-
-        # download http://www.anc.org/SecondRelease/data/ANC-all-count.txt
+class wordfreq:
+    def __init__(self):
+        # http://www.anc.org/SecondRelease/data/ANC-all-count.txt
         # 预处理: 以cp1252格式打开, 转为utf8保存
         #   数据中很多非ASCII字符和怪异标点符号, 过滤掉
-        self.ANCFILE = "/e/documents/language/English/frequency/ANC-all-count.txt"
+        self.ANCFILE = "/data/doc/language/english/frequency/ANC-all-count.txt"
 
-        # download http://www.kilgarriff.co.uk/BNClists/all.num.gz
+        # http://www.kilgarriff.co.uk/BNClists/all.num.gz
         # 预处理: 无需
         #   非ASCII字符均以html entity形式编码, 直接过滤掉这类单词
-        self.BNCFILE = "/e/documents/language/English/frequency/BNC.all.num.txt"
+        self.BNCAKFILE = "/data/doc/language/english/frequency/bnc.kilgarriff/BNC.all.num.txt"
 
-        # download http://www.pdawiki.com/forum/thread-13667-1-1.html
+        # http://www.pdawiki.com/forum/thread-13667-1-1.html
         # 此词频mdx里含有不同词性分别统计的数据, 只保留最前/小的序号
         # 预处理:
-        #   cd /e/goldendict/dicts/mine
         #   readmdict.py -x COCA.Frequency.List.mdx
         #   lynx -force_html -width=1000 --dump COCA.Frequency.List.txt > coca.txt
         #   rm data COCA.Frequency.List.txt -rf
-        self.COCAFILE = "/e/goldendict/dicts/mine/coca.txt"
+        self.COCAFILE = "/data/doc/language/english/frequency/coca.mdict/coca.txt"
 
-        # 对单词排序时使用的乘子, 应大于最大行号
-        self.ORDERMULTIPLIER = 1000000
+        # http://www.victoria.ac.nz/lals/about/staff/publications/paul-nation
+        #   download "Range program with British National Corpus list"
+        #   有两个版本: 14000版 和 25000版, 目前取14000版, 含14组14000个families
+        #   14000版的 basewrd15.txt 是专有词汇, 许多较生僻, 忽略
+        self.BNCPNROOTDIR = "/data/doc/language/english/frequency/bnc.paulnation/BNC-14000-and-programs-and-instructions/"
+        self.BNCPNROOTDIRFILES = 14
 
+        self.bncpn = self.handleBNCPN()
+        self.bncak = self.handleBNCAK()
         self.anc = self.handleANC()
-        self.bnc = self.handleBNC()
         self.coca = self.handleCOCA()
 
-        self.metafreqlist = [\
-                ('ANC', self.anc), \
-                ('BNC', self.bnc), \
-                ('COCA', self.coca)]
+        self.metafreqlist = [
+                ("BNC.PN",  self.bncpn, 1000000),
+                ("BNC.AK",  self.bncak,   60000),
+                ("ANC",     self.anc,     60000),
+                ("COCA",    self.coca,    60000),
+                ]
 
-    # 过滤掉所有含 数字, 特殊符号, 非ASCII字符 的单词, 过滤后:
-    #   ANC : 210474 words
-    #   BNC : 495404 words
-    #   COCA: 362861 words
-    def passfilter(self, word):
-        matchres = re.match('.*[0-9&*!%:?/]', word) is None
-        matchres = matchres and re.match('.*[^\t-~]', word) is None
-        return matchres
+    def isgoodword(self, word):
+        return re.match('.*[^a-zA-Z \-]', word) is None
 
     # not used
     def getrootdict():
@@ -60,7 +53,7 @@ class ZZWordFreq:
             flines = fANC.readlines()
         rdict = {}
         for line in flines:
-            line = line.rstrip().split('\t')
+            line = line.strip().split('\t')
             if len(line) != 4:
                 continue
             word = line[0]
@@ -68,134 +61,215 @@ class ZZWordFreq:
             rdict[word] = root
         return rdict
 
-    # 将dict对象 {'word':num, ...} 按num进行排序, 返回list对象
-    #   num代表词频次数统计时, reverse = True, 按num从大到小排序
-    #   num代表已排序的序号时, reverse = False, 按num从小到大排序
-    # note: sorted() is unstable
-    #   当num代表次数时, 比如很多单词都是10次, 这些单词排序后会乱序
-    #   目前对于次数的处理:
-    #       num = 次数 * ORDERMULTIPLIER + lineno
-    #       即当次数一致时, 按lineno排序, 可解决unstable问题
-    def dict2list(self, adict, reverse):
-        alist = list(adict.items())
-        from operator import itemgetter
-        alist = sorted(alist, key = itemgetter(1), reverse = reverse)
-        alist = list(item[0] for item in alist)
-        return alist
-
     def handleANC(self):
+        '''
+            ANC频率表:
+                the     the     DT      1204816
+                of      of      IN      606545
+                and     and     CC      595372
+            说明:
+                最后一行为汇总
+                同一单词可能因不同词性(第三列)而出现在多行中
+            返回字典:
+                {"the":[1, None], "of":[2, None], ...}
+        '''
+        print("initializing ANC dict ...")
         with open(self.ANCFILE, 'r') as f:
             flines = f.readlines()
-
-        # 每个单词作为key放入dict中
-        lineno = -1
+        seq_no = 0
         initdict = {}
         for line in flines:
-            lineno += 1
-            line = line.rstrip().split('\t')
+            line = line.strip().split('\t')
             if len(line) != 4:
                 if not ''.join(line).startswith('Total words : '):
-                    print('ANC: unhandled line: ', line)
+                    print('ANC: wrong line: ', line)
                 continue
             key = line[1]
             value = int(line[3])
-            if self.passfilter(key):
-                if not key in initdict:
-                    initdict[key] = self.ORDERMULTIPLIER*value + lineno
-                else:
-                    initdict[key] += self.ORDERMULTIPLIER*value
+            if self.isgoodword(key) and not key in initdict:
+                seq_no += 1
+                initdict[key] = [seq_no, None]
+        return sorted(initdict.items(), key=lambda x:x[1][0])
 
-        return self.dict2list(initdict, reverse = True)
-
-    def handleBNC(self):
-        with open(self.BNCFILE, 'r') as f:
+    def handleBNCAK(self):
+        '''
+            BNC.AK 频率表:
+                100106029 !!WHOLE_CORPUS !!ANY 4124
+                6187267 the at0 4120
+                2941444 of prf 4108
+                2682863 and cjc 4120
+            说明:
+                首行是汇总
+                同一单词可能因不同词性(第三列)而出现在多行中
+            返回字典:
+                {"the":[1, None], "of":[2, None], ...}
+        '''
+        print("initializing BNC.AK dict ...")
+        with open(self.BNCAKFILE, 'r') as f:
             flines = f.readlines()
-
-        # 每个单词作为key放入dict中
-        lineno = -1
+        seq_no = 0
         initdict = {}
         for line in flines:
-            lineno += 1
-            line = line.rstrip().split(' ')
+            line = line.strip().split(' ')
             if len(line) != 4:
-                print('BNC: unhandled line: ', line)
+                print('BNCAK: unhandled line: ', line)
                 continue
             key = line[1]
-            value = int(line[0])
-            if self.passfilter(key):
-                if not key in initdict:
-                    initdict[key] = self.ORDERMULTIPLIER*value + lineno
-                else:
-                    initdict[key] += self.ORDERMULTIPLIER*value
+            if self.isgoodword(key) and not key in initdict:
+                seq_no += 1
+                initdict[key] = [seq_no, None]
+        return sorted(initdict.items(), key=lambda x:x[1][0])
 
-        return self.dict2list(initdict, reverse = True)
+    def handleBNCPN(self):
+        '''
+            BNC.PN频率表, 词根部分:
+                ALSO 0
+                ALTHOUGH 0
+                ALWAYS 0
+                    ALLUS 0
+                AMAZE 0
+                    AMAZED 0
+                    AMAZEMENT 0
+                    AMAZES 0
+            说明:
+                所有单词按 word family 组织, 每个family 有一个 root
+                每个文件1000个root, 文件内按字母顺序排序, 文件间则按词频排序
+                每个root后续的缩进行代表word family 内其他单词
+                有许多变体如 hôtel 是作为对应词根 hotel 的 family member
+                isgoodword 会过滤掉这些非ASCII的单词
+            返回字典:
+                {"the":[1, None], "of":[2, None], ...}
+        '''
+        print("initializing BNC-paul-nation dict ...")
+        curroot = None
+        initdict = {}
+        seq_no = 0
+        for i in range(self.BNCPNROOTDIRFILES):
+            idbatch = (i + 1) * 1000
+            filename = self.BNCPNROOTDIR + "basewrd{}.txt".format(i+1)
+            print("handling ", filename)
+            with open(filename, 'r') as f:
+                flines = f.readlines()
+            for line in flines:
+                isroot = not line.startswith('\t')
+                line = line.strip().lower()
+                if not line:
+                    continue
+                line = line.split()[0]
+                if not self.isgoodword(line):
+                    print("  ignore: ", line)
+                    continue
+                elif isroot:
+                    curroot = line
+                    initdict[curroot] = [idbatch, None]
+                elif curroot:
+                    initdict[line] = [idbatch, curroot]
+                    updatestr = initdict[curroot][1]
+                    if updatestr:
+                        updatestr += ", " + line
+                    else:
+                        updatestr = line
+                    initdict[curroot] = [idbatch, updatestr]
+                else:
+                    print("  wrong line: ", line)
+        return sorted(initdict.items(), key=lambda x:x[1][0])
 
     def handleCOCA(self):
+        '''
+            COCA频率表:
+                'a
+                    * 496637 have, infinitive
+                ...
+                the
+                    * 1 article (e.g. the, no)
+                    * 5375 general preposition
+            说明:
+                每个单词出现一次
+                紧接着缩进多行, 列出词性及相应词频排名, 取第一个即可
+            返回字典:
+                {"the":[1, None], "and":[2, None], ...}
+        '''
+        print("initializing COCA dict ...")
         with open(self.COCAFILE, 'r') as f:
             flines = f.readlines()
         initdict = {}
-        # 处理含统计数字的行
-        # 如 '     * 73225 base form of lexical verb' 替换为 73225
-        for i in range(len(flines)):
-            flines[i] = flines[i].rstrip()
-            if flines[i].startswith('     * '):
-                flines[i] = re.sub('^     \* ([0-9]+).*', '\g<1>', flines[i])
-        # 逆序, 合并数字到单词所在行, 并删除空词头
-        initdict = {}
-        # for i, line in enumerate(reverse(flines)):
-        for i in range(len(flines)-1, 0, -1):
-            # 若是以数字开头
-            if flines[i].isdigit():
-                # 排前面的数字序号更小, 若前面存在数据, 则忽略本条数据
-                # 否则可加入dict
-                if flines[i-1].startswith('   '):
-                    key = flines[i-1].strip()
-                    value = int(flines[i])
-                    if self.passfilter(key):
-                        initdict[key] = value
+        key = None
+        for line in flines:
+            # 将 '* 73225 base ....' 替换为其中的数字 73225
+            line = re.sub('^(\* [0-9]+).*', '\g<1>', line.strip())
+            if line == '':
+              continue
+            # 取紧跟下一行的数字(value)作为单词(key)的排名
+            if not re.match('^\* [0-9]', line):
+                if self.isgoodword(line):
+                    key = line
+                    initdict[key] = [0, None]
+                else:
+                    key = None
+            elif key:
+                initdict[key][0] += int(line[2:])
+                key = None
+        tmplist = sorted(initdict.items(), key=lambda x:x[1][0])
+        # 修正排序中的空洞, 比如the 排no.1和1000, 则1000处为空洞
+        for i in range(len(tmplist)):
+            tmplist[i][1][0] = i + 1
+        return tmplist
 
-        return self.dict2list(initdict, reverse = False)
+    def printlistinfo(self):
+        for (name, data, limit) in self.metafreqlist:
+            limit = min(limit, len(data))
+            print("{} - {}/{}".format(name, limit, len(data)))
+            print('   ex: first 3 items: ', data[:3])
+            print('        100+ 3 items: ', data[100:103])
+            print('        last 3 items: ', data[limit-3:limit])
 
-    def printlistinfo(self, desc, alist):
-        print('\ndict: ', desc)
-        print('len: ', len(alist))
-        print('first 10 items: ', alist[:10])
-        print('100+ 10 items: ', alist[100:110])
-        print('last 10 items: ', alist[-10:])
-
-    def writedsl(self, adict, dslname):
+    def writedsl(self, od, dslname):
+        print("writing dsl file ...")
         with open(dslname, 'w') as f:
             f.write('#NAME "ZZ WordFreq"\n')
             f.write('#INDEX_LANGUAGE "English"\n')
             f.write('#CONTENTS_LANGUAGE "English"\n')
             f.write('\n')
-            for w in adict:
-                f.write(w + '\n')
-                freqofaword = adict[w]  # 如 {'BNC': 2, 'ANC': 3, 'COCA': 3}
-                for (freqname, freqlist) in self.metafreqlist:
-                    if freqname in freqofaword:
-                        f.write('\t\\[' + freqname + '\\] ' + \
-                                str(freqofaword[freqname]) + '\n')
+            for word in od:
+                f.write(word + '\n')
+                for dictname, (rank, desc) in od[word]:
+                    # rank, desc = od[word][dictname]
+                    if not desc:
+                        desc = ""
+                    f.write('\t\\[{}\\] {} {}\n'.format(dictname, rank, desc))
 
     def combineall(self):
-        for (freqname, freqlist) in self.metafreqlist:
-            self.printlistinfo(freqname, freqlist)
-
+        '''
+            合并后的字典格式, 值为另一个字典
+            "the": {
+                'BAK.PN': (1, 'addi,info,here'),
+                'BNC.AK': (1, None),
+                'ANC': (1, None)
+                }
+        '''
+        print("combining all dicts ...")
         od = collections.OrderedDict()
-        for index in range(self.N):
-            for (freqname, freqlist) in self.metafreqlist:
-                word = freqlist[index]
+        for (name, data, limit) in self.metafreqlist:
+            for i in range(min(limit, len(data))):
+                word = data[i][0]
                 if not word in od:
-                    od[word] = {}
-                od[word][freqname] = index + 1
+                    od[word] = []
+                od[word].append([name, data[i][1]])
 
-        print('\nN = ', str(self.N))
-        print('Total words in final dict: ' + str(len(od)))
-        print('Ex: "of" ', od['of'])
-
-        self.writedsl(od, self.OUTPUTDSL)
-        print("\ndsl dict created.")
+        return od
 
 if __name__ == '__main__':
-    zz = ZZWordFreq(N=100000)
-    zz.combineall()
+
+    DSLFILE = "wordfreq.zz.dsl.test"
+    zz = wordfreq()
+    zz.printlistinfo()
+    od = zz.combineall()
+    zz.writedsl(od, DSLFILE)
+
+    print('Total words in final dict: ' + str(len(od)))
+    print('Ex: "the" ', od['the'])
+    print('Ex: "fabulous" ', od['fabulous'])
+    print('Ex: "poignancy" ', od['poignancy'])
+
+
+
