@@ -20,7 +20,7 @@ ZZ WordFreq
 - 可用于 [GoldenDict] [Goldendict@github] v1.5+
 
 ZZ WordFreq
-> top 100k from BNC/ANC/COCA
+> top 60000 words from BNC.AK/ANC/COCA, 14000 word families from BNC.PN
 - wordfreq.zz.dsl
 - wordfreq.zz.ann
 
